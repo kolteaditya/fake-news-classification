@@ -1,0 +1,275 @@
+import sys
+import re
+import csv
+import string
+import pandas as pd
+import numpy as np
+from csv import reader
+
+import nltk
+from nltk.tokenize import sent_tokenize, word_tokenize
+from nltk.stem import PorterStemmer
+from nltk.stem import LancasterStemmer
+
+import sklearn
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+from sklearn.tree import DecisionTreeClassifier
+
+from google.colab import drive
+drive.mount("/gdrive", force_remount=True)
+
+# path to train.csv file CHANGE THIS TO POINT TO LOCAL PATH*****
+training_path = "/gdrive/Shared drives/Cyberanalytics/Project/train.csv"
+
+csv.field_size_limit(sys.maxsize)
+nltk.download('stopwords')
+nltk.download('punkt')
+punctuations = list(string.punctuation)
+stopwords = set(nltk.corpus.stopwords.words('english'))
+lancaster = LancasterStemmer()
+porter = PorterStemmer()
+
+#----------------Data Processing----------------
+
+
+# extract text and other relevant fields from CSV's
+def read_data(stopwords, stemmer, path):
+  df = pd.read_csv(path)
+  # extract author
+  df.author.fillna('missing', inplace=True)
+  # extract title
+  df.title.fillna('missing', inplace=True)
+  # extract text
+  df.text.fillna('missing', inplace=True)
+  
+  # combine results into single feature
+  df['att'] = df['author'] + ' ' + df['title'] + ' ' + df['text']
+  
+  return df
+  
+# extract dataset from train.csv
+training = read_data(stopwords, lancaster, training_path)
+
+# save training labels
+Y = training['label'].values
+
+# training to testing set ratio. CHANGE THIS TO WHAT YOU WANT
+TRAINING_TO_TEST_RATIO = 0.3
+
+# create training and testing datasets along with training and testing label sets
+training, testing_samples, Y_train, testing_labels = train_test_split(training, Y, test_size=TRAINING_TO_TEST_RATIO, random_state=42, shuffle=True)
+
+# minimum size of n_gram CHANGE THIS TO WHAT YOU WANT
+ngram_min = 1
+# maximum size of n_gram CHANGE THIS TO WHAT YOU WANT
+ngram_max = 2
+
+# vectorize the data using CountVectorizer
+vec = CountVectorizer(ngram_range=(ngram_min,ngram_max), stop_words='english', lowercase=True, strip_accents='unicode', tokenizer=word_tokenize)
+vec_X_train = vec.fit_transform(training['att'].values)
+vec_X_test = vec.transform(testing_samples['att'].values)
+
+# vectorize the data using TF-IDF
+tfidf = TfidfVectorizer(ngram_range=(ngram_min,ngram_max), stop_words='english', lowercase=True, strip_accents='unicode', tokenizer=word_tokenize)
+tfidf_X_train = tfidf.fit_transform(training['att'].values)
+tfidf_X_test = tfidf.transform(testing_samples['att'].values)
+
+#----------------Logistic Regression Implementation----------------
+
+# run Logisic Regression Classifier
+def UseLogisticRegression(X_test, Y_test, X_train, Y_train, training, testing_samples, testing_labels):
+  # initialize Logistic Regression classifier
+  _C = 1e5
+  logisticreg = LogisticRegression(C=_C, penalty='l2', max_iter=300)
+  logisticreg.fit(X_train, Y_train)
+
+  # make predictions on test dataset
+  predict = logisticreg.predict(X_test)
+
+  # print results (accuracy, precision, recall)
+  print(classification_report(predict, Y_test))
+
+  # calculate true positives, true negatives, false positives, and false negatives
+  index = 0
+  tp = 0
+  tn = 0
+  fp = 0
+  fn = 0
+  
+  # iterate through predictions and calculate tp, tn, fp, and fn
+  for index in range(len(predict)):
+    if predict[index] == 1:
+      if predict[index] == Y_test[index]:
+        tp += 1
+      else:
+        fp += 1
+    else:
+      if predict[index] == Y_test[index]:
+        tn += 1
+      else:
+        fn += 1
+    
+    index += 1
+  
+  # print results
+  print("TP: " + str(tp))
+  print("TN: " + str(tn))
+  print("FP: " + str(fp))
+  print("FN: " + str(fn))
+
+# print prediction results of Logistic Regression using Count Vectorizer
+print("Logistic Regression w/ Count Vectorizer")
+UseLogisticRegression(vec_X_test, Y_test, vec_X_train, Y_train, training, testing_samples, testing_labels)
+
+# print prediction results of Logistic Regression using TF-IDF UNCOMMENT TO SEE PERFORMANCE
+#print("Logistic Regression w/ TFIDF")
+#UseLogisticRegression(tfidf_X_test, Y_test, tfidf_X_train, Y_train, training, testing_samples, testing_labels)
+
+#----------------KNN Implementation----------------
+def KNNCV(X_test, Y_test, X_train, Y_train, training, testing_samples, testing_labels):
+  knn = KNeighborsClassifier(n_neighbors=2)
+  knn.fit(X_train, Y_train)
+
+  # make predictions on test dataset
+  predict = knn.predict(X_test)
+
+  # print results (accuracy, precision, recall)
+  print(classification_report(predict, Y_test))
+
+  # calculate true positives, true negatives, false positives, and false negatives
+  index = 0
+  tp = 0
+  tn = 0
+  fp = 0
+  fn = 0
+  
+  for index in range(len(predict)):
+    if predict[index] == 1:
+      if predict[index] == Y_test[index]:
+        tp += 1
+      else:
+        fp += 1
+    else:
+      if predict[index] == Y_test[index]:
+        tn += 1
+      else:
+        fn += 1
+    
+    index += 1
+
+  print("TP: " + str(tp))
+  print("TN: " + str(tn))
+  print("FP: " + str(fp))
+  print("FN: " + str(fn))
+
+# print prediction results of KNN using Count Vectorizer
+print("KNN w/ Count Vectorizer")
+KNNCV(vec_X_test, Y_test, vec_X_train, Y_train, training, testing_samples, testing_labels)
+
+# print prediction results of KNN using TF-IDF UNCOMMENT TO SEE PERFORMANCE
+#print("KNN w/ TFIDF")
+#KNNCV(tfidf_X_test, Y_test, tfidf_X_train, Y_train, training, testing_samples, testing_labels)
+
+#----------------Multinomial Naive Bayes Implementation----------------
+
+def Naive_Bayes_Classification(X_test, Y_test, X_train, Y_train, training, testing_samples, testing_labels):
+  # remove any negative values from set
+  X_train[X_train < 0] = X_train[X_train < 0]*-1
+  X_test[X_test < 0] = X_test[X_test < 0]*-1
+
+  # initialize multinomial naive bayes classifier
+  nb = MultinomialNB()
+  nb.fit(X_train, Y_train)
+
+  # make predictions on test dataset
+  predict = nb.predict(X_test)
+
+  # print results (accuracy, precision, recall)
+  print(classification_report(predict, Y_test))
+
+  # calculate true positives, true negatives, false positives, and false negatives
+  index = 0
+  tp = 0
+  tn = 0
+  fp = 0
+  fn = 0
+  
+  for index in range(len(predict)):
+    if predict[index] == 1:
+      if predict[index] == Y_test[index]:
+        tp += 1
+      else:
+        fp += 1
+    else:
+      if predict[index] == Y_test[index]:
+        tn += 1
+      else:
+        fn += 1
+    
+    index += 1
+
+  print("TP: " + str(tp))
+  print("TN: " + str(tn))
+  print("FP: " + str(fp))
+  print("FN: " + str(fn))
+
+
+# print prediction results of Multinomial Naive Bayes using Count Vectorizer
+print("Naive Bayes w/ Count Vectorizer")
+Naive_Bayes_Classification(vec_X_test, Y_test, vec_X_train, Y_train, training, testing_samples, testing_labels)
+
+# print prediction results of Multinomial Naive Bayes using TF-IDF  UNCOMMENT TO SEE PERFORMANCE
+#print("Naive Bayes w/ TFIDF")
+#Naive_Bayes_Classification(tfidf_X_test, Y_test, tfidf_X_train, Y_train, training, testing_samples, testing_labels)
+
+#----------------Decision Trees----------------
+def Decision_Tree_Classification(X_test, Y_test, X_train, Y_train, training, testing_samples, testing_labels):
+  # initialize decision tree classifier
+  dt = DecisionTreeClassifier()
+  dt.fit(X_train, Y_train)
+
+  # make predictions on test set
+  predict = dt.predict(X_test)
+
+  # print results (accuracy, precision, recall)
+  print(classification_report(predict, Y_test))
+
+  # calculate true positives, true negatives, false positives, and false negatives
+  index = 0
+  tp = 0
+  tn = 0
+  fp = 0
+  fn = 0
+  
+  for index in range(len(predict)):
+    if predict[index] == 1:
+      if predict[index] == Y_test[index]:
+        tp += 1
+      else:
+        fp += 1
+    else:
+      if predict[index] == Y_test[index]:
+        tn += 1
+      else:
+        fn += 1
+    
+    index += 1
+
+  print("TP: " + str(tp))
+  print("TN: " + str(tn))
+  print("FP: " + str(fp))
+  print("FN: " + str(fn))
+
+# print prediction results of Decision Tree using Count Vectorizer
+print("Decision Tree w/ Count Vectorizer")
+Decision_Tree_Classification(vec_X_test, Y_test, vec_X_train, Y_train, training, testing_samples, testing_labels)
+
+# print prediction results of Decision Tree using TF-IDF  UNCOMMENT TO SEE PERFORMANCE
+#print("Decision Tree w/ TFIDF")
+#Decision_Tree_Classification(tfidf_X_test, Y_test, tfidf_X_train, Y_train, training, testing_samples, testing_labels)
